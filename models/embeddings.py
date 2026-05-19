@@ -23,6 +23,11 @@ class EmbeddingFunction:
         from sentence_transformers import SentenceTransformer
 
         self._model = SentenceTransformer(model_name)
+        self._model_name = model_name
+
+    def name(self) -> str:
+        """Return a unique name for this embedding function."""
+        return f"sentence-transformers-{self._model_name.split('/')[-1]}"
 
     def __call__(self, input: List[str]) -> List[List[float]]:  # noqa: A002
         return self._model.encode(input, convert_to_numpy=True).tolist()
