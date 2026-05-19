@@ -16,7 +16,6 @@ _DEFAULT_COLLECTION = "valorant"
 class EmbeddingFunction:
     """
     Chroma-compatible embedding function backed by sentence-transformers.
-    Can also be called standalone: ef(["text1", "text2"]) -> list[list[float]]
     """
 
     def __init__(self, model_name: str = _EMBED_MODEL) -> None:
@@ -30,6 +29,7 @@ class EmbeddingFunction:
         return f"sentence-transformers-{self._model_name.split('/')[-1]}"
 
     def __call__(self, input: List[str]) -> List[List[float]]:  # noqa: A002
+        """Embed multiple texts."""
         return self._model.encode(input, convert_to_numpy=True).tolist()
 
 
@@ -44,25 +44,28 @@ class VectorStore:
         collection: str = _DEFAULT_COLLECTION,
     ) -> None:
         import chromadb
-        from chromadb.config import Settings
 
         self._ef = EmbeddingFunction()
-        self._client = chromadb.PersistentClient(
-            path=db_path,
-            settings=Settings(anonymized_telemetry=False),
-        )
-        self._collection = self._client.get_or_create_collection(
-            name=collection,
-            embedding_function=self._ef,  # type: ignore[arg-type]
-        )
+        self._client = chromadb.PersistentClient(path=db_path)
+        # Get or create collection with embedding function
+        try:
+            self._collection = self._client.get_collection(name=collection)
+        except ValueError:
+            # Collection doesn't exist, create it with embedding function
+            self._collection = self._client.create_collection(
+                name=collection,
+                embedding_function=self._ef,  # type: ignore[arg-type]
+            )
 
     def query(self, text: str, k: int = 4) -> List[str]:
         """Return up to *k* most-relevant document strings."""
         n = min(k, self._collection.count())
         if n == 0:
             return []
+        # Compute embedding manually and pass to query
+        query_embedding = self._ef([text])[0]
         results = self._collection.query(
-            query_texts=[text],
+            query_embeddings=[query_embedding],
             n_results=n,
         )
         docs = results.get("documents", [[]])[0]
